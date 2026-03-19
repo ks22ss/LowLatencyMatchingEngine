@@ -1,17 +1,18 @@
 package engine;
 
+import engine.ingress.IngressServer;
 import engine.pipeline.DisruptorPipeline;
 import engine.pipeline.TradeListener;
 
 /**
- * Entry point for the low-latency matching engine. Starts the Disruptor pipeline
- * (single consumer = matching thread); producers can publish via pipeline.publishSubmit/Cancel.
+ * Entry point for the low-latency matching engine. Starts the Disruptor pipeline and
+ * Netty ingress (TCP decode → publish). Single consumer = matching thread.
  */
 public final class MatchingEngineApp {
 
+    private static final int DEFAULT_PORT = 9999;
+
     public static void main(String[] args) throws InterruptedException {
-        // Disruptor pipeline configuration
-        // 1 << 16  =  2^16  =  65,536 ring buffer size
         int ringSize = 1 << 16;
         TradeListener listener = TradeListener.noOp();
         DisruptorPipeline pipeline = new DisruptorPipeline(
@@ -23,8 +24,15 @@ public final class MatchingEngineApp {
                     return t;
                 }
         );
-        Runtime.getRuntime().addShutdownHook(new Thread(pipeline::shutdown));
-        System.out.println("Matching engine running (ring size=" + ringSize + "). Ctrl+C to stop.");
+        int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
+        IngressServer server = new IngressServer(pipeline, port);
+        server.start();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.shutdown();
+            pipeline.shutdown();
+        }));
+        System.out.println("Matching engine listening on port " + port + " (ring size=" + ringSize + "). Ctrl+C to stop.");
         Thread.sleep(Long.MAX_VALUE);
     }
 }

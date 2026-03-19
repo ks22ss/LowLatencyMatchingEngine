@@ -50,6 +50,13 @@ On Windows use `gradlew.bat` instead of `./gradlew`.
 - `src/main/resources/` — config placeholder
 - `src/test/java/` — unit tests and (later) JMH benchmarks
 
+## Wire protocol (TCP ingress)
+
+Binary, big-endian. Send to the engine port (default 9999).
+
+- **SUBMIT** (type `0`): 1 + 8 + 1 + 8 + 8 + 1 + 8 = 35 bytes: type, orderId, side (0=BUY 1=SELL), price, quantity, orderType (0=LIMIT 1=MARKET), timestampNanos.
+- **CANCEL** (type `1`): 1 + 8 = 9 bytes: type, orderId.
+
 ## Key dependencies
 
 | Purpose        | Library        |

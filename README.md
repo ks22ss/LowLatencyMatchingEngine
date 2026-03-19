@@ -6,10 +6,33 @@ See **[docs/PRD.md](docs/PRD.md)** for requirements and observability (JMH, HdrH
 
 ## Requirements
 
-- **JDK 25** (project uses Java 25 toolchain; adjust in `build.gradle.kts` if using 21 or 17)
+- **JDK 21** (LTS) to run Gradle and build the project. The app is compiled for Java 21.
 - Gradle 8.10+ (wrapper included)
 
+**Why not JDK 25?** If you run `gradlew` with JDK 25, the build fails with `IllegalArgumentException: 25.0.2` (Gradle’s Kotlin DSL doesn’t support JDK 25’s version string yet). Use JDK 21 to run Gradle; you can still have JDK 25 installed for other work.
+
 ## Build & run
+
+**Use JDK 21 when running Gradle** (required):
+
+- **Option A — set JAVA_HOME** (recommended):  
+  Point `JAVA_HOME` to JDK 21, then run Gradle:
+  ```bash
+  # Windows (PowerShell)
+  $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+  .\gradlew.bat build
+
+  # Windows (CMD)
+  set JAVA_HOME=C:\Program Files\Java\jdk-21
+  gradlew.bat build
+  ```
+- **Option B — force in project**:  
+  In `gradle.properties`, set (use your actual JDK 21 path):
+  ```properties
+  org.gradle.java.home=C:/Program Files/Java/jdk-21
+  ```
+
+Then:
 
 ```bash
 # Build and test
@@ -19,7 +42,7 @@ See **[docs/PRD.md](docs/PRD.md)** for requirements and observability (JMH, HdrH
 ./gradlew run
 ```
 
-On Windows: `gradlew.bat` instead of `./gradlew`.
+On Windows use `gradlew.bat` instead of `./gradlew`.
 
 ## Layout
 

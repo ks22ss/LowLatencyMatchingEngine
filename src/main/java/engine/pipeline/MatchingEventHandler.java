@@ -6,6 +6,7 @@ import engine.domain.OrderType;
 import engine.domain.TradeEvent;
 import engine.matching.MatchResult;
 import engine.matching.OrderBook;
+import engine.metrics.EngineMetrics;
 
 import java.util.List;
 
@@ -18,10 +19,12 @@ public final class MatchingEventHandler implements EventHandler<InboundEvent> {
 
     private final OrderBook orderBook;
     private final TradeListener tradeListener;
+    private final EngineMetrics metrics;
 
-    public MatchingEventHandler(OrderBook orderBook, TradeListener tradeListener) {
+    public MatchingEventHandler(OrderBook orderBook, TradeListener tradeListener, EngineMetrics metrics) {
         this.orderBook = orderBook;
         this.tradeListener = tradeListener;
+        this.metrics = metrics;
     }
 
     @Override
@@ -36,12 +39,17 @@ public final class MatchingEventHandler implements EventHandler<InboundEvent> {
                     event.getTimestampNanos()
             );
             MatchResult result = orderBook.submit(order);
+
+            long afterMatchingNanos = System.nanoTime();
+            long latencyNanos = afterMatchingNanos - event.getTimestampNanos();
+            metrics.onSubmit(event.getSide(), event.getOrderType(), latencyNanos);
+
             List<TradeEvent> trades = result.trades();
-            if (!trades.isEmpty()) {
-                tradeListener.onTrades(trades);
-            }
+            metrics.onTrades(trades.size());
+            if (!trades.isEmpty()) tradeListener.onTrades(trades);
         } else {
             orderBook.cancel(event.getOrderId());
+            metrics.onCancel();
         }
     }
 }

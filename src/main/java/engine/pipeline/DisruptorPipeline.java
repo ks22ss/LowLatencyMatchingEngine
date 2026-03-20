@@ -8,6 +8,7 @@ import engine.domain.Order;
 import engine.domain.OrderType;
 import engine.domain.Side;
 import engine.matching.OrderBook;
+import engine.metrics.EngineMetrics;
 
 import java.util.concurrent.ThreadFactory;
 
@@ -21,9 +22,15 @@ public final class DisruptorPipeline {
     private final Disruptor<InboundEvent> disruptor;
     private final RingBuffer<InboundEvent> ringBuffer;
     private final OrderBook orderBook;
+    private final EngineMetrics metrics;
 
     public DisruptorPipeline(int ringSize, TradeListener tradeListener, ThreadFactory threadFactory) {
-        orderBook = new OrderBook();
+        this(ringSize, tradeListener, threadFactory, EngineMetrics.noop());
+    }
+
+    public DisruptorPipeline(int ringSize, TradeListener tradeListener, ThreadFactory threadFactory, EngineMetrics metrics) {
+        this.metrics = metrics;
+        this.orderBook = new OrderBook();
         InboundEventFactory factory = new InboundEventFactory();
         disruptor = new Disruptor<>(
                 factory,
@@ -32,7 +39,7 @@ public final class DisruptorPipeline {
                 ProducerType.SINGLE,
                 new BlockingWaitStrategy()
         );
-        disruptor.handleEventsWith(new MatchingEventHandler(orderBook, tradeListener));
+        disruptor.handleEventsWith(new MatchingEventHandler(orderBook, tradeListener, metrics));
         disruptor.start();
         ringBuffer = disruptor.getRingBuffer();
     }
@@ -48,7 +55,9 @@ public final class DisruptorPipeline {
                     order.price(),
                     order.quantity(),
                     order.orderType(),
-                    order.timestampNanos()
+                    // Use monotonic time as the baseline for in-process latency measurements.
+                    // This avoids relying on client epoch timestamps.
+                    System.nanoTime()
             );
         } finally {
             ringBuffer.publish(sequence);

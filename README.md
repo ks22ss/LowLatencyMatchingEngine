@@ -2,7 +2,9 @@
 
 Java matching engine (single symbol, limit + market) targeting **1M orders/sec** and **p99 &lt; 10 µs**. Built with LMAX Disruptor, Netty, and Kafka for trade-event replay.
 
-See **[docs/PRD.md](docs/PRD.md)** for requirements and observability (JMH, HdrHistogram, Micrometer, JFR, async-profiler).
+- **[docs/PRD.md](docs/PRD.md)** — requirements and observability roadmap  
+- **[docs/DESIGN.md](docs/DESIGN.md)** — architecture, threads, trade-offs  
+- **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — build, Docker Kafka, run, verify
 
 ## Requirements
 
@@ -44,11 +46,44 @@ Then:
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
 
+### Microbenchmarks (JMH + HdrHistogram)
+
+Run with **JDK 21** and a **quiet machine** (close heavy apps, plug in power on laptops) for stable numbers:
+
+```bash
+./gradlew jmh          # Linux / macOS
+.\gradlew.bat jmh      # Windows
+```
+
+Benchmarks live under **`src/jmh/java/engine/bench/`**:
+
+- **`OrderBookThroughputBench`** — JMH **throughput** of crossing limit-order submits on the in-process **`OrderBook`** (not Netty, not Disruptor, not Kafka). Use it to compare JVM flags or code changes on the same box.
+- **`OrderBookHdrLatencyBench`** — JMH **SampleTime** plus an **HdrHistogram** built from `System.nanoTime()` around each `submit` in the measured loop. A **manual warmup** in `@Setup` JITs the path before recording; **`@TearDown(Level.Trial)`** prints **`outputPercentileDistribution`** so you get tail behavior in one place.
+
+**Interpreting output:** JMH’s summary table (throughput ops/s or sample mean ns/op) is for regression-style A/B tests on *your* hardware. The printed Hdr table is **per trial** (aggregated over measurement iterations for that benchmark). Absolute µs targets in the PRD are **not** guaranteed by these microbenchmarks—they isolate the matcher, not the full ingress/pipeline. Raw text is also written to **`build/results/jmh/results.txt`**.
+
 ## Layout
 
 - `src/main/java/engine/` — core engine (matching, Disruptor, Netty, Kafka sink)
 - `src/main/resources/` — config placeholder
-- `src/test/java/` — unit tests and (later) JMH benchmarks
+- `src/test/java/` — unit and integration tests
+- `src/jmh/java/engine/bench/` — JMH benchmarks (HdrHistogram where noted)
+
+## Kafka trade sink (optional)
+
+When **`KAFKA_BOOTSTRAP_SERVERS`** or **`-Dkafka.bootstrap.servers`** is set, trades are sent asynchronously:
+
+- Matching thread only **offers** each `TradeEvent` to a bounded queue (non-blocking).
+- Daemon thread **`kafka-trade-sender`** serializes (48-byte big-endian longs) and calls `KafkaProducer.send`.
+- If the queue is full, trades are **dropped**; see `AsyncKafkaTradeSink#droppedTrades()` for a future metric.
+
+| Env / property | Default |
+|----------------|---------|
+| `KAFKA_BOOTSTRAP_SERVERS` / `kafka.bootstrap.servers` | (off if unset) |
+| `KAFKA_TRADES_TOPIC` / `kafka.trades.topic` | `engine-trades` |
+| `KAFKA_TRADES_QUEUE_CAPACITY` / `kafka.trades.queue.capacity` | `65536` |
+
+Payload: `tradeId, price, quantity, makerOrderId, takerOrderId, timestampNanos` (each `long`, big-endian).
 
 ## Wire protocol (TCP ingress)
 
@@ -65,5 +100,5 @@ Binary, big-endian. Send to the engine port (default 9999).
 | Network I/O    | Netty          |
 | Trade sink     | Kafka clients  |
 | Metrics        | Micrometer + Prometheus |
-| Latency stats  | HdrHistogram   |
-| Benchmarks     | JMH (test scope) |
+| Latency stats  | HdrHistogram (JMH bench + optional runtime use) |
+| Benchmarks     | JMH (`jmh` source set, Champeau plugin)        |

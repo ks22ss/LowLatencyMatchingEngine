@@ -1,6 +1,7 @@
 plugins {
     java
     application
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 group = "engine"
@@ -21,6 +22,7 @@ val nettyVersion = "4.1.115.Final"
 val kafkaVersion = "3.7.0"
 val micrometerVersion = "1.13.0"
 val hdrHistogramVersion = "2.2.2"
+val jmhVersion = "1.37"
 
 dependencies {
     implementation("com.lmax:disruptor:$disruptorVersion")
@@ -33,8 +35,15 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.openjdk.jmh:jmh-core:1.37")
-    testRuntimeOnly("org.openjdk.jmh:jmh-generator-annprocess:1.37")
+
+    jmh("org.openjdk.jmh:jmh-core:$jmhVersion")
+    jmh("org.openjdk.jmh:jmh-generator-annprocess:$jmhVersion")
+}
+
+jmh {
+    fork.set(1)
+    threads.set(1)
+    includes.add("engine\\.bench\\..*")
 }
 
 application {

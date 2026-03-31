@@ -8,6 +8,10 @@ curl -fsSL https://go.dev/dl/go1.22.5.linux-amd64.tar.gz -o /tmp/go.tar.gz
 tar -C /usr/local -xzf /tmp/go.tar.gz
 export PATH=$${PATH}:/usr/local/go/bin
 export GOPATH=/root/go
+export HOME=/root
+export XDG_CACHE_HOME=/root/.cache
+export GOCACHE=/root/.cache/go-build
+mkdir -p "$${GOCACHE}" "$${GOPATH}" "$${XDG_CACHE_HOME}"
 
 echo "=== Cloning repo ==="
 cd /opt

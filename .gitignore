@@ -31,3 +31,5 @@ scripts/loadgen/loadgen.exe
 # Local config (do not commit secrets)
 local.properties
 *.local
+
+*.pem

@@ -214,26 +214,6 @@ One thing to note is that the latency keep going up from time to time, and it's 
 Initial thought is that the orderbook are keep growing leading to larger memory allocation and GC pressure.
 But the number of trades match seems go linear with it, so not sure the orderbook are really growing.
 
-### Project Roadmap
-
-- **Make latency explainable**
-  - Enable **Micrometer JVM metrics** (heap, GC pauses, threads) and add Grafana panels:
-    - `jvm_memory_used_bytes{area="heap"}`
-    - `histogram_quantile(0.99, sum(rate(jvm_gc_pause_seconds_bucket[5m])) by (le))`
-  - Enable **GC logs** on the engine instance (Java 21 `-Xlog:gc*`), ship `/var/log/engine-gc.log` for inspection.
-
-- **Increase achieved loadgen throughput**
-  - Tune **`-batch`** (Terraform `loadgen_batch`, default 128) and connection count; compare “configured rate” vs **progress `interval_msg/s`** and correlate with engine p99.
-
-- **Make the workload more realistic**
-  - Track fill ratio: `rate(matching_trades_filled_total[1m]) / rate(matching_inbound_submit_total[1m])` under **`-mode crossing`** vs **`rest-heavy`**.
-
-- **Improve AWS spot reliability**
-  - Check/request **Spot quotas** and migrate loadgens to an **ASG with mixed instance types** (capacity-optimized).
-
-- **Chaos experiments**
-  - Inject latency/loss on loadgen nodes (`tc netem`) and observe p99 + ring rejects.
-  - Restart engine mid-run and confirm dashboards show recovery cleanly.
 
 ## Wire protocol (TCP ingress)
 

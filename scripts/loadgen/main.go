@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -29,6 +30,16 @@ const (
 	maxFrameBytes = 35 // SUBMIT
 )
 
+type workloadKind int
+
+const (
+	modeDefault workloadKind = iota
+	modeCrossingPairs
+	modeRestHeavy
+	modeCancelHeavy
+	modeMarketHeavy
+)
+
 type cfg struct {
 	addr        string
 	duration    time.Duration
@@ -43,24 +54,35 @@ type cfg struct {
 	seed        int64
 	timeout     time.Duration
 	batchFrames int
+	restSpread  int64
+	kind        workloadKind
+	modeLabel   string
 }
 
 func main() {
 	var c cfg
+	var modeFlag string
 	flag.StringVar(&c.addr, "addr", "127.0.0.1:9999", "engine TCP ingress address host:port")
 	flag.DurationVar(&c.duration, "duration", 60*time.Second, "how long to run")
 	flag.IntVar(&c.conns, "conns", 1, "number of concurrent TCP connections (workers)")
 	flag.Float64Var(&c.rate, "rate", 0, "target total messages/sec across all conns; 0 = as fast as possible")
-	flag.Float64Var(&c.cancelPct, "cancel-pct", 0, "0..100 percent of messages that are CANCEL")
-	flag.Float64Var(&c.marketPct, "market-pct", 0, "0..100 percent of SUBMIT messages that are MARKET")
-	flag.Int64Var(&c.price, "price", 100_00, "base price (engine units)")
-	flag.Int64Var(&c.priceJitter, "price-jitter", 0, "uniform jitter added to price in [-jitter,+jitter]")
+	flag.Float64Var(&c.cancelPct, "cancel-pct", 0, "0..100 CANCEL share when -mode is empty; -mode presets replace this")
+	flag.Float64Var(&c.marketPct, "market-pct", 0, "0..100 MARKET share when -mode is empty; -mode presets replace this")
+	flag.Int64Var(&c.price, "price", 100_00, "base price (engine units); mid for rest-heavy")
+	flag.Int64Var(&c.priceJitter, "price-jitter", 0, "uniform jitter added to price in [-jitter,+jitter] (crossing/default)")
 	flag.Int64Var(&c.qtyMin, "qty-min", 1, "min quantity")
 	flag.Int64Var(&c.qtyMax, "qty-max", 1, "max quantity")
 	flag.Int64Var(&c.seed, "seed", 1, "RNG seed (use a fixed seed for repeatability)")
 	flag.DurationVar(&c.timeout, "timeout", 3*time.Second, "dial timeout per connection")
 	flag.IntVar(&c.batchFrames, "batch", 128, "max frames to buffer per Write (64–256 typical)")
+	flag.Int64Var(&c.restSpread, "rest-spread", 0, "bid=price-spread ask=price+spread for rest-heavy; default 2000 when mode=rest")
+	flag.StringVar(&modeFlag, "mode", "",
+		"workload preset: crossing (paired BUY/SELL limits at same price), rest (wide spread, resting book), cancel (high cancels), market (high market orders); empty = random/jitter from flags")
 	flag.Parse()
+
+	if err := c.applyMode(modeFlag); err != nil {
+		fatalf("%v", err)
+	}
 
 	if c.conns < 1 {
 		fatalf("conns must be >= 1")
@@ -77,6 +99,11 @@ func main() {
 	if c.qtyMin < 1 || c.qtyMax < c.qtyMin {
 		fatalf("qty-min must be >=1 and qty-max must be >= qty-min")
 	}
+	if c.kind == modeRestHeavy {
+		if c.price-c.restSpread < 1 {
+			fatalf("rest-heavy: price - rest-spread must be >= 1 (price=%d rest-spread=%d)", c.price, c.restSpread)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.duration)
 	defer cancel()
@@ -91,6 +118,14 @@ func main() {
 	)
 
 	start := time.Now()
+
+	if c.modeLabel != "" {
+		fmt.Printf("loadgen mode: %s (cancel-pct=%.0f market-pct=%.0f", c.modeLabel, c.cancelPct, c.marketPct)
+		if c.kind == modeRestHeavy {
+			fmt.Printf(" rest-spread=%d", c.restSpread)
+		}
+		fmt.Printf(")\n")
+	}
 
 	go progressReporter(ctx, start, &submits, &cancels, &errors)
 
@@ -137,6 +172,9 @@ func main() {
 				cancelIdx  uint32
 				cancelFill uint32
 			)
+
+			// Crossing pairs: alternate BUY/SELL at the same peg price so each aggressive leg hits the resting opposing limit.
+			nextCrossIsBuy := workerID%2 == 0
 
 			dialer := net.Dialer{Timeout: c.timeout}
 			defer func() {
@@ -196,28 +234,63 @@ func main() {
 
 				} else {
 					oid := atomic.AddUint64(&nextOrderID, 1)
-					side := sideBuy
-					if rng.Intn(2) == 0 {
-						side = sideSell
-					}
+					var side byte
+					var price int64
+					var ot byte
 
-					price := c.price
-					if c.priceJitter > 0 {
-						j := rng.Int63n(2*c.priceJitter+1) - c.priceJitter
-						price += j
+					switch c.kind {
+					case modeCrossingPairs:
+						side = sideSell
+						if nextCrossIsBuy {
+							side = sideBuy
+						}
+						nextCrossIsBuy = !nextCrossIsBuy
+						price = c.price
+						if c.priceJitter > 0 {
+							j := rng.Int63n(2*c.priceJitter+1) - c.priceJitter
+							price += j
+							if price < 1 {
+								price = 1
+							}
+						}
+						ot = orderTypeLimit
+
+					case modeRestHeavy:
+						if rng.Intn(2) == 0 {
+							side = sideBuy
+							price = c.price - c.restSpread
+						} else {
+							side = sideSell
+							price = c.price + c.restSpread
+						}
 						if price < 1 {
 							price = 1
 						}
+						ot = orderTypeLimit
+
+					default:
+						side = sideBuy
+						if rng.Intn(2) == 0 {
+							side = sideSell
+						}
+						price = c.price
+						if c.priceJitter > 0 {
+							j := rng.Int63n(2*c.priceJitter+1) - c.priceJitter
+							price += j
+							if price < 1 {
+								price = 1
+							}
+						}
+						ot = orderTypeLimit
+						if rng.Float64()*100.0 < c.marketPct {
+							ot = orderTypeMarket
+							price = 0
+						}
 					}
+
 					qty := c.qtyMin
 					if c.qtyMax > c.qtyMin {
 						qty = c.qtyMin + rng.Int63n(c.qtyMax-c.qtyMin+1)
-					}
-
-					ot := orderTypeLimit
-					if rng.Float64()*100.0 < c.marketPct {
-						ot = orderTypeMarket
-						price = 0
 					}
 
 					ts := time.Now().UnixNano()
@@ -259,6 +332,9 @@ func main() {
 
 	fmt.Printf("Done.\n")
 	fmt.Printf("  duration: %s\n", elapsed.Truncate(time.Millisecond))
+	if c.modeLabel != "" {
+		fmt.Printf("  mode:     %s\n", c.modeLabel)
+	}
 	fmt.Printf("  conns:    %d\n", c.conns)
 	fmt.Printf("  batch:    %d frames/write\n", c.batchFrames)
 	fmt.Printf("  submits:  %d\n", s)
@@ -268,6 +344,44 @@ func main() {
 	fmt.Printf("  addr:     %s\n", c.addr)
 	fmt.Printf("  started:  %s\n", start.Format(time.RFC3339))
 	fmt.Printf("  ended:    %s\n", time.Now().Format(time.RFC3339))
+}
+
+func (c *cfg) applyMode(s string) error {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" || s == "default" || s == "random" {
+		c.kind = modeDefault
+		c.modeLabel = ""
+		return nil
+	}
+
+	switch s {
+	case "crossing", "crossing-pairs", "cross":
+		c.kind = modeCrossingPairs
+		c.modeLabel = "crossing"
+		c.cancelPct = 5
+		c.marketPct = 0
+	case "rest", "rest-heavy":
+		c.kind = modeRestHeavy
+		c.modeLabel = "rest-heavy"
+		c.cancelPct = 3
+		c.marketPct = 0
+		if c.restSpread == 0 {
+			c.restSpread = 2000
+		}
+	case "cancel", "cancel-heavy":
+		c.kind = modeCancelHeavy
+		c.modeLabel = "cancel-heavy"
+		c.cancelPct = 45
+		c.marketPct = 0
+	case "market", "market-heavy":
+		c.kind = modeMarketHeavy
+		c.modeLabel = "market-heavy"
+		c.cancelPct = 5
+		c.marketPct = 50
+	default:
+		return fmt.Errorf("unknown -mode %q (try crossing, rest-heavy, cancel-heavy, market-heavy)", s)
+	}
+	return nil
 }
 
 func progressReporter(ctx context.Context, start time.Time, submits, cancels, errors *uint64) {

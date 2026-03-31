@@ -17,14 +17,16 @@ resource "aws_spot_instance_request" "loadgen" {
   }
 
   user_data = templatefile("${path.module}/templates/loadgen-userdata.sh.tpl", {
-    repo_url    = var.repo_url
-    repo_branch = var.repo_branch
-    engine_ip   = aws_instance.engine.private_ip
-    duration    = var.loadgen_duration
-    conns       = var.loadgen_conns
-    rate        = var.loadgen_rate
-    cancel_pct  = var.loadgen_cancel_pct
-    batch       = var.loadgen_batch
+    repo_url      = var.repo_url
+    repo_branch   = var.repo_branch
+    engine_ip     = aws_instance.engine.private_ip
+    duration      = var.loadgen_duration
+    conns         = var.loadgen_conns
+    rate          = var.loadgen_rate
+    cancel_pct    = var.loadgen_cancel_pct
+    batch         = var.loadgen_batch
+    workload_mode = var.loadgen_mode
+    rest_spread   = var.loadgen_rest_spread
   })
 
   tags = { Name = "loadgen-${count.index}" }

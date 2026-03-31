@@ -38,7 +38,14 @@ echo "=== Starting loadgen ==="
   -conns ${conns} \
   -rate ${rate} \
   -batch ${batch} \
+%{ if workload_mode != "" ~}
+  -mode "${workload_mode}" \
+%{ else ~}
   -cancel-pct ${cancel_pct} \
+%{ endif ~}
+%{ if rest_spread != 0 ~}
+  -rest-spread ${rest_spread} \
+%{ endif ~}
   -price 10000 \
   -price-jitter 500 \
   -qty-min 1 \

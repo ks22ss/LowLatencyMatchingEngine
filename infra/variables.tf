@@ -71,3 +71,15 @@ variable "loadgen_batch" {
   description = "Frames per TCP write (batching reduces syscalls; typical 64–256)"
   default     = 128
 }
+
+variable "loadgen_mode" {
+  description = "Go loadgen -mode: crossing | rest-heavy | cancel-heavy | market-heavy; empty string uses loadgen_cancel_pct only (no -mode flag)"
+  type        = string
+  default     = ""
+}
+
+variable "loadgen_rest_spread" {
+  description = "Optional -rest-spread for rest-heavy (half-spread each side of loadgen_price); 0 = omit (Go defaults 2000 when mode is rest-heavy)"
+  type        = number
+  default     = 0
+}

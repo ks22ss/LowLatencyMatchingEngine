@@ -18,5 +18,7 @@ my_ip    = "YOUR_PUBLIC_IP/32"    # Your IP for SSH + Grafana access (curl ifcon
 # loadgen_duration   = "5m"
 # loadgen_rate       = 10000   # msg/s per loadgen instance
 # loadgen_conns      = 4       # TCP connections per loadgen
-# loadgen_cancel_pct = 10      # percent cancel messages
-# loadgen_batch      = 128     # frames per TCP write (64–256 typical)
+# loadgen_cancel_pct  = 10      # percent cancel when loadgen_mode is empty
+# loadgen_batch       = 128     # frames per TCP write (64–256 typical)
+# loadgen_mode        = ""      # crossing | rest-heavy | cancel-heavy | market-heavy (non-empty skips cancel-pct in userdata)
+# loadgen_rest_spread = 0       # optional -rest-spread for rest-heavy (0 = loadgen default)

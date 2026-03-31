@@ -84,6 +84,8 @@ To run at maximum speed (no target rate), set `-rate 0`.
 
 Use **`-batch`** (default `128`) to send multiple frames per `Write` (e.g. `64`–`256`). Progress lines **`[progress] interval_msg/s=…`** print every **5 seconds**.
 
+Preset workloads: **`-mode crossing`**, **`rest-heavy`**, **`cancel-heavy`**, **`market-heavy`** (see `scripts/README.md`).
+
 ## AWS experiment (Terraform)
 
 For the cloud experiment (engine + spot loadgens + self-hosted Prometheus/Grafana), see:

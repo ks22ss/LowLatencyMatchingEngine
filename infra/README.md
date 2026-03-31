@@ -90,8 +90,10 @@ Edit `terraform.tfvars`:
 | `loadgen_duration` | 5m | How long each loadgen runs |
 | `loadgen_rate` | 10000 | Target msg/s per loadgen instance |
 | `loadgen_conns` | 4 | TCP connections per loadgen |
-| `loadgen_cancel_pct` | 10 | Percent of messages that are CANCEL |
+| `loadgen_cancel_pct` | 10 | Percent CANCEL when `loadgen_mode` is empty |
 | `loadgen_batch` | 128 | Frames per TCP write (batching for throughput) |
+| `loadgen_mode` | `""` | Preset: `crossing`, `rest-heavy`, `cancel-heavy`, `market-heavy`; non-empty passes `-mode` (no `-cancel-pct` in userdata) |
+| `loadgen_rest_spread` | 0 | Optional `-rest-spread` for `rest-heavy` (`0` = binary default 2000) |
 
 Total theoretical throughput = `loadgen_count * loadgen_rate` msg/s (e.g. 10 * 10000 = 100k msg/s).
 

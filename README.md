@@ -216,8 +216,7 @@ But the number of trades match seems go linear with it, so not sure the orderboo
   - Tune **`-batch`** (Terraform `loadgen_batch`, default 128) and connection count; compare “configured rate” vs **progress `interval_msg/s`** and correlate with engine p99.
 
 - **Make the workload more realistic**
-  - Add loadgen modes: **crossing pairs**, **rest-heavy**, **cancel-heavy**, **market-heavy**.
-  - Track fill ratio: `rate(matching_trades_filled_total[1m]) / rate(matching_inbound_submit_total[1m])`.
+  - Track fill ratio: `rate(matching_trades_filled_total[1m]) / rate(matching_inbound_submit_total[1m])` under **`-mode crossing`** vs **`rest-heavy`**.
 
 - **Improve AWS spot reliability**
   - Check/request **Spot quotas** and migrate loadgens to an **ASG with mixed instance types** (capacity-optimized).

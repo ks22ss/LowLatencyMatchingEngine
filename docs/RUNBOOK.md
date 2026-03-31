@@ -100,5 +100,4 @@ For the cloud experiment (engine + spot loadgens + self-hosted Prometheus/Grafan
 
 ## References
 
-- **[PRD.md](PRD.md)** — scope and observability.
 - **[DESIGN.md](DESIGN.md)** — architecture.

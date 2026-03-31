@@ -2,7 +2,6 @@
 
 Java matching engine (single symbol, limit + market) targeting **1M orders/sec** and **p99 &lt; 10 µs**. Built with LMAX Disruptor, Netty, and Kafka for trade-event replay.
 
-- **[docs/PRD.md](docs/PRD.md)** — requirements and observability roadmap
 - **[docs/DESIGN.md](docs/DESIGN.md)** — architecture, threads, trade-offs
 - **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — build, Docker Kafka, run, verify
 
@@ -60,7 +59,7 @@ Benchmarks live under **`src/jmh/java/engine/bench/`**:
 - **`OrderBookThroughputBench`** — JMH **throughput** of crossing limit-order submits on the in-process **`OrderBook`** (not Netty, not Disruptor, not Kafka). Use it to compare JVM flags or code changes on the same box.
 - **`OrderBookHdrLatencyBench`** — JMH **SampleTime** plus an **HdrHistogram** built from `System.nanoTime()` around each `submit` in the measured loop. A **manual warmup** in `@Setup` JITs the path before recording; **`@TearDown(Level.Trial)`** prints **`outputPercentileDistribution`** so you get tail behavior in one place.
 
-**Interpreting output:** JMH’s summary table (throughput ops/s or sample mean ns/op) is for regression-style A/B tests on _your_ hardware. The printed Hdr table is **per trial** (aggregated over measurement iterations for that benchmark). Absolute µs targets in the PRD are **not** guaranteed by these microbenchmarks—they isolate the matcher, not the full ingress/pipeline. Raw text is also written to **`build/results/jmh/results.txt`**.
+**Interpreting output:** JMH’s summary table (throughput ops/s or sample mean ns/op) is for regression-style A/B tests on _your_ hardware. The printed Hdr table is **per trial** (aggregated over measurement iterations for that benchmark). Absolute µs targets stated above are **not** guaranteed by these microbenchmarks—they isolate the matcher, not the full ingress/pipeline. Raw text is also written to **`build/results/jmh/results.txt`**.
 
 ### Throughput and latency on your machine (Prometheus / Grafana)
 

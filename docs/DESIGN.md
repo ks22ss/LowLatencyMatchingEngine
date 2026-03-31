@@ -44,5 +44,4 @@ Single writer to the book; no concurrent mutation of resting `Order` instances e
 
 ## Related docs
 
-- **[PRD.md](PRD.md)** — requirements and observability.
 - **[RUNBOOK.md](RUNBOOK.md)** — operations.

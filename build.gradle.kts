@@ -60,6 +60,7 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.named<JavaExec>("run") {
     jvmArgs(
-        "-Xlog:gc*:file=build/engine-gc.log:time,uptime,level,tags"
+        "-XX:+UseZGC",
+        "-Xlog:gc*:file=build/engine-gc.log:time,uptime,level,tags",
     )
 }

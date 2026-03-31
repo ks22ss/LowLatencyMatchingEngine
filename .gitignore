@@ -17,6 +17,17 @@ Thumbs.db
 *.log
 hs_err_pid*
 
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/.terraform.lock.hcl
+infra/terraform.tfvars
+
+# Go
+scripts/loadgen/loadgen
+scripts/loadgen/loadgen.exe
+
 # Local config (do not commit secrets)
 local.properties
 *.local

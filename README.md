@@ -194,6 +194,16 @@ histogram_quantile(
 sum(rate(matching_ring_publish_rejected_total[1m]))
 ```
 
+- **Monitor Heap Memory Usage**
+```promql
+jvm_memory_used_bytes{area="heap"}
+```
+
+- **Monitor GC Pauses (if GC1 is used, ZGC rarely use it)**
+```promql
+jvm_gc_pause_seconds_max
+```
+
 - **Grafana dashboard**
 ![“Throughput and p99 tail latency under sustained load.”](image/llme-1.png)
 

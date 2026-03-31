@@ -114,6 +114,116 @@ When **`KAFKA_BOOTSTRAP_SERVERS`** or **`-Dkafka.bootstrap.servers`** is set, tr
 
 Payload: `tradeId, price, quantity, makerOrderId, takerOrderId, timestampNanos` (each `long`, big-endian).
 
+## AWS observability & chaos experiment (Terraform)
+
+This section documents my real cloud experiment: deploying the engine on **AWS (ap-southeast-1, Singapore)**, generating sustained TCP load from multiple clients, and observing throughput + tail latency in **Prometheus + Grafana**.
+
+### What I built
+
+- **Engine node (on-demand)**: runs `engine.app.MatchingEngineApp`
+  - TCP ingress: `:9999`
+  - Prometheus metrics: `:8081/metrics`
+- **Load generators (Spot)**: run a Go TCP load generator (`scripts/loadgen`) firing random SUBMIT/CANCEL frames
+- **Monitoring node (on-demand)**: self-hosted **Prometheus + Grafana** (Docker Compose), scraping the engine
+
+Infrastructure lives in `infra/` (Terraform). User-data bootstraps each instance (install deps, clone repo, build, start services).
+
+### Architecture
+
+```text
+┌──────────────────────────────────────────── VPC (default) ────────────────────────────────────┐
+│                                                                                               │
+│  ┌─────────────┐     TCP :9999     ┌────────────────────┐                                     │
+│  │  loadgen-*   │ ───────────────▶ │                    │                                     │
+│  │  (Spot EC2)  │                  │  matching-engine   │ :8081/metrics                       │
+│  └─────────────┘                  │  (Netty + Disruptor│ ◀──── scrape ──── ┌──────────────┐  │
+│                                   │   + OrderBook)     │                    │  monitoring   │  │
+│                                   └────────────────────┘                    │  Prometheus   │  │
+│                                                                             │  Grafana :3000│  │
+│                                                                             └──────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Settings
+![AWS Setup](image/llme-2.png)
+
+![Load generator actual](image/llme-5.png)
+
+- Number of load generators: 4
+- Duration: 15 minutes
+- Rate: 5000 messages per second per load generator
+- Connections per load generator: 4
+- Cancel percentage: 10%
+
+### Running the experiment
+
+```bash
+cd infra
+cp terraform.tfvars.example terraform.tfvars
+# Edit: key_name + my_ip
+
+terraform init
+terraform apply
+```
+
+- `terraform output grafana_url`
+- `terraform output prometheus_url`
+- `terraform output engine_metrics_url`
+
+
+### What I observed
+
+- **Throughput**
+```promql
+sum(rate(matching_inbound_submit_total[1m]))
+```
+
+- **Latency (p99 submit→match)**
+```promql
+histogram_quantile(
+  0.99,
+  sum(rate(matching_submit_to_match_latency_seconds_bucket[5m])) by (le)
+)
+```
+
+- **Backpressure / ring publish rejects**
+```promql
+sum(rate(matching_ring_publish_rejected_total[1m]))
+```
+
+- **Grafana dashboard**
+![“Throughput and p99 tail latency under sustained load.”](image/llme-1.png)
+
+- **As Expected, throughput is hovering around 20,000 TPS (5000 for each load generator)**
+![20,000 TPS](image/llme-3.png)
+
+One thing to note is that the latency keep going up from time to time, and it's not stable.
+Initial thought is that the orderbook are keep growing leading to larger memory allocation and GC pressure.
+But the number of trades match seems go linear with it, so not sure the orderbook are really growing.
+
+### Project Roadmap
+
+- **Make latency explainable**
+  - Enable **Micrometer JVM metrics** (heap, GC pauses, threads) and add Grafana panels:
+    - `jvm_memory_used_bytes{area="heap"}`
+    - `histogram_quantile(0.99, sum(rate(jvm_gc_pause_seconds_bucket[5m])) by (le))`
+  - Enable **GC logs** on the engine instance (Java 21 `-Xlog:gc*`), ship `/var/log/engine-gc.log` for inspection.
+
+- **Increase achieved loadgen throughput**
+  - Update `scripts/loadgen` to **batch frames** (e.g. 64–256 frames per write) and print periodic progress (msg/s every 5s).
+  - Compare “configured rate” vs “achieved rate” and correlate with engine p99.
+
+- **Make the workload more realistic**
+  - Add loadgen modes: **crossing pairs**, **rest-heavy**, **cancel-heavy**, **market-heavy**.
+  - Track fill ratio: `rate(matching_trades_filled_total[1m]) / rate(matching_inbound_submit_total[1m])`.
+
+- **Improve AWS spot reliability**
+  - Check/request **Spot quotas** and migrate loadgens to an **ASG with mixed instance types** (capacity-optimized).
+
+- **Chaos experiments**
+  - Inject latency/loss on loadgen nodes (`tc netem`) and observe p99 + ring rejects.
+  - Restart engine mid-run and confirm dashboards show recovery cleanly.
+
 ## Wire protocol (TCP ingress)
 
 Binary, big-endian. Send to the engine port (default 9999).

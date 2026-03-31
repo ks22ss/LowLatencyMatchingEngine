@@ -69,6 +69,26 @@ Point the app at Kafka with `KAFKA_BOOTSTRAP_SERVERS=localhost:9092` (or host IP
 2. **Functional**: run `./gradlew test`; use a TCP client or integration test path that sends SUBMIT/CANCEL frames.
 3. **Kafka** (if enabled): consume `engine-trades` (or `KAFKA_TRADES_TOPIC`) and confirm 48-byte-per-message layout (see `TradeEventBinaryEncoder` / README).
 
+## Generate load (Go)
+
+The repo includes a Go TCP load generator that speaks the same binary wire protocol as the Netty ingress.
+
+From the repo root:
+
+```bash
+cd scripts/loadgen
+go run . -addr 127.0.0.1:9999 -duration 60s -conns 4 -rate 20000
+```
+
+To run at maximum speed (no target rate), set `-rate 0`.
+
+## AWS experiment (Terraform)
+
+For the cloud experiment (engine + spot loadgens + self-hosted Prometheus/Grafana), see:
+
+- `infra/README.md`
+- `README.md` → “AWS observability & chaos experiment (Terraform)”
+
 ## Troubleshooting
 
 | Symptom | Check |

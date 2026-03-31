@@ -142,6 +142,8 @@ Infrastructure lives in `infra/` (Terraform). User-data bootstraps each instance
 │                                                                             └──────────────┘  │
 └───────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+## Running the experiment
+
 
 ### Settings
 ![AWS Setup](image/llme-2.png)
@@ -154,9 +156,8 @@ Infrastructure lives in `infra/` (Terraform). User-data bootstraps each instance
 - Connections per load generator: 4
 - Cancel percentage: 10%
 
-### Running the experiment
 
-Prepare the infrastructure:
+**Prepare the infrastructure:**
 - your key pair on ec2 region
 - your public ip
 
@@ -174,7 +175,7 @@ terraform apply
 - `terraform output engine_metrics_url`
 
 
-### What I observed
+### What I will observe
 
 - **Throughput**
 ```promql

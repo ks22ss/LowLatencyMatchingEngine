@@ -42,7 +42,7 @@ System property wins when both are set.
 ```
 
 - **Ingress**: TCP binary protocol on the engine port (default **9999**); see README **Wire protocol**.
-- **Metrics**: HTTP Prometheus scrape on **8081** by default (`METRICS_PORT` or `-Dmetrics.port`).
+- **Metrics**: HTTP Prometheus scrape on **8081** by default (`METRICS_PORT` or `-Dmetrics.port`). Ring overload: **`matching.ring.publish.rejected.total`** (`op=submit` or `cancel`) increments when the Disruptor ring is full; the ingress handler **closes** that TCP connection.
 - **Kafka**: set `KAFKA_BOOTSTRAP_SERVERS` or `-Dkafka.bootstrap.servers` to enable async trade publishing (topic and queue size in README).
 
 ## Docker: Kafka + Prometheus + Grafana

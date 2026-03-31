@@ -64,6 +64,35 @@ Benchmarks live under **`src/jmh/java/engine/bench/`**:
 
 **Interpreting output:** JMH’s summary table (throughput ops/s or sample mean ns/op) is for regression-style A/B tests on _your_ hardware. The printed Hdr table is **per trial** (aggregated over measurement iterations for that benchmark). Absolute µs targets in the PRD are **not** guaranteed by these microbenchmarks—they isolate the matcher, not the full ingress/pipeline. Raw text is also written to **`build/results/jmh/results.txt`**.
 
+### Throughput and latency on your machine (Prometheus / Grafana)
+
+The engine exposes Micrometer metrics on **`http://localhost:8081/metrics`** by default (override with **`METRICS_PORT`** or **`-Dmetrics.port`**). To graph them locally, run Prometheus (e.g. **`docker compose up`** in this repo — see [docs/RUNBOOK.md](docs/RUNBOOK.md)), point it at the engine, generate load (`./gradlew run` plus [scripts/send_orders.py](scripts/send_orders.py) or [scripts/simulate_market.py](scripts/simulate_market.py)), then use **PromQL** in the Prometheus UI or paste the same expressions into a **Grafana** panel (Prometheus datasource).
+
+**Orders per second (all submit types combined):**
+
+```promql
+sum(rate(matching_inbound_submit_total[1m]))
+```
+
+`[1m]` is a one-minute sliding window for `rate()`; you can use `[5m]` for a smoother line.
+
+**Approximate p99 latency (ring publish → match), in seconds:** Micrometer timers export histogram buckets with a **`_seconds`** suffix — use the names you see on `/metrics` if yours differ.
+
+```promql
+histogram_quantile(
+  0.99,
+  sum(rate(matching_submit_to_match_latency_seconds_bucket[5m])) by (le)
+)
+```
+
+`histogram_quantile` expects **non-negative** rates; if this returns nothing, confirm the scrape target is **UP**, the histogram series exists (open `/metrics` and search for `matching_submit_to_match_latency`), and submits are actually occurring (`rate` needs counters to change over the window).
+
+**Throughput by side and order type** (Micrometer may expose labels as `order_type` rather than `orderType`):
+
+```promql
+sum by (side, order_type) (rate(matching_inbound_submit_total[1m]))
+```
+
 ## Layout
 
 - `src/main/java/engine/` — core engine (matching, Disruptor, Netty, Kafka sink)

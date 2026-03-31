@@ -14,7 +14,7 @@
                             trades --> TradeListener --> (optional) AsyncKafkaTradeSink
 ```
 
-- **Ingress** (`engine.ingress`): Netty decodes frames into `InboundEvent` (SUBMIT / CANCEL) and publishes to the ring.
+- **Ingress** (`engine.ingress`): Netty decodes frames into `InboundEvent` (SUBMIT / CANCEL) and publishes to the ring with **`RingBuffer.tryNext`**: a full ring returns `false`, increments **`matching.ring.publish.rejected.total`**, and the TCP channel is **closed** (explicit slow-consumer signal, no Netty thread block).
 - **Pipeline** (`engine.pipeline`): LMAX Disruptor with a dedicated **matching** thread running `MatchingEventHandler`.
   The consumer **wait strategy** defaults to **phased** (busy spin, then yield, then lite blocking) so steady traffic avoids full `BlockingWaitStrategy` wake-up cost; set `DISRUPTOR_WAIT_STRATEGY` or `-Ddisruptor.wait.strategy` to `busy_spin` (lowest tail latency, highest CPU), `yielding`, `blocking`, or `phased` (see RUNBOOK).
 - **Core** (`engine.matching`): `OrderBook` — `TreeMap` price levels, `LinkedHashMap` per level for FIFO by insertion order.

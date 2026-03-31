@@ -19,6 +19,12 @@ public interface EngineMetrics {
 
     void onKafkaDroppedTrades(long droppedCount);
 
+    /** Ingress could not acquire a ring slot (slow matcher). Called from the producer thread (e.g. Netty I/O). */
+    void onRingPublishRejectedSubmit();
+
+    /** Same as {@link #onRingPublishRejectedSubmit()} for cancel commands. */
+    void onRingPublishRejectedCancel();
+
     static EngineMetrics noop() {
         return NoopEngineMetrics.INSTANCE;
     }
@@ -40,6 +46,12 @@ public interface EngineMetrics {
 
         @Override
         public void onKafkaDroppedTrades(long droppedCount) {}
+
+        @Override
+        public void onRingPublishRejectedSubmit() {}
+
+        @Override
+        public void onRingPublishRejectedCancel() {}
     }
 }
 

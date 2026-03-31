@@ -7,7 +7,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 
 /**
  * Publishes decoded InboundCommand to the Disruptor. Runs on the Netty I/O thread;
- * must not block. ringBuffer.next() can block if the ring is full (backpressure).
+ * must not block. {@link DisruptorPipeline#publishSubmit} / {@link DisruptorPipeline#publishCancel}
+ * use {@code tryNext}: if the ring is full the publish fails, metrics record a reject, and the channel
+ * is closed so the client gets a clear slow-consumer signal.
  */
 public final class PublishToDisruptorHandler extends SimpleChannelInboundHandler<InboundCommand> {
 
@@ -24,9 +26,15 @@ public final class PublishToDisruptorHandler extends SimpleChannelInboundHandler
                 Order order = new Order(
                         s.orderId(), s.side(), s.price(), s.quantity(), s.orderType(), s.timestampNanos()
                 );
-                pipeline.publishSubmit(order);
+                if (!pipeline.publishSubmit(order)) {
+                    ctx.close();
+                }
             }
-            case InboundCommand.Cancel c -> pipeline.publishCancel(c.orderId());
+            case InboundCommand.Cancel c -> {
+                if (!pipeline.publishCancel(c.orderId())) {
+                    ctx.close();
+                }
+            }
         }
     }
 

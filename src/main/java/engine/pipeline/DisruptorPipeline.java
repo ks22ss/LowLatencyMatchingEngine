@@ -2,6 +2,7 @@ package engine.pipeline;
 
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.BusySpinWaitStrategy;
+import com.lmax.disruptor.InsufficientCapacityException;
 import com.lmax.disruptor.PhasedBackoffWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.WaitStrategy;
@@ -22,6 +23,12 @@ import java.util.concurrent.TimeUnit;
  * Disruptor pipeline: single producer (or multi later for Netty), single consumer (matching).
  * Producers publish SUBMIT or CANCEL events; consumer runs OrderBook and forwards trades.
  * Ring buffer is pre-allocated; no allocation in the hot path when publishing or consuming.
+ * <p>
+ * <strong>Ring backpressure:</strong> {@link #publishSubmit} and {@link #publishCancel} use
+ * {@link RingBuffer#tryNext()}: they return {@code false} immediately when the ring has no free slot
+ * (matcher not keeping up). They do <em>not</em> block the calling thread. Callers should treat
+ * {@code false} as overload (see metrics {@code matching.ring.publish.rejected.total}).
+ * This class does not offer a blocking {@link RingBuffer#next()} publish API.
  * <p>
  * Wait strategy defaults to phased spin/yield then lite blocking (see {@link #createWaitStrategy()});
  * override with {@code -Ddisruptor.wait.strategy=…} or {@code DISRUPTOR_WAIT_STRATEGY} for latency vs CPU.
@@ -53,9 +60,18 @@ public final class DisruptorPipeline {
         ringBuffer = disruptor.getRingBuffer();
     }
 
-    /** Publish a submit event (order). Returns true if published; false if ring full (should not happen with proper backpressure). */
-    public void publishSubmit(Order order) {
-        long sequence = ringBuffer.next();
+    /**
+     * Publish a submit event (order). Non-blocking: returns {@code false} if the ring is full
+     * ({@link InsufficientCapacityException} from {@link RingBuffer#tryNext()}).
+     */
+    public boolean publishSubmit(Order order) {
+        final long sequence;
+        try {
+            sequence = ringBuffer.tryNext();
+        } catch (InsufficientCapacityException e) {
+            metrics.onRingPublishRejectedSubmit();
+            return false;
+        }
         try {
             InboundEvent event = ringBuffer.get(sequence);
             event.setSubmit(
@@ -71,22 +87,32 @@ public final class DisruptorPipeline {
         } finally {
             ringBuffer.publish(sequence);
         }
+        return true;
     }
 
     /** Convenience: publish limit order with timestamp 0. */
-    public void publishSubmit(long orderId, Side side, long price, long quantity) {
-        publishSubmit(Order.of(orderId, side, price, quantity, OrderType.LIMIT));
+    public boolean publishSubmit(long orderId, Side side, long price, long quantity) {
+        return publishSubmit(Order.of(orderId, side, price, quantity, OrderType.LIMIT));
     }
 
-    /** Publish a cancel event. */
-    public void publishCancel(long orderId) {
-        long sequence = ringBuffer.next();
+    /**
+     * Publish a cancel event. Non-blocking: returns {@code false} if the ring is full.
+     */
+    public boolean publishCancel(long orderId) {
+        final long sequence;
+        try {
+            sequence = ringBuffer.tryNext();
+        } catch (InsufficientCapacityException e) {
+            metrics.onRingPublishRejectedCancel();
+            return false;
+        }
         try {
             InboundEvent event = ringBuffer.get(sequence);
             event.setCancel(orderId);
         } finally {
             ringBuffer.publish(sequence);
         }
+        return true;
     }
 
     public void shutdown() {

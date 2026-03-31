@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@link #onSubmit}</li>
  *   <li>{@link #onCancel}</li>
  *   <li>{@link #onTrades}</li>
+ *   <li>{@link #onRingPublishRejectedSubmit} / {@link #onRingPublishRejectedCancel} (ingress thread)</li>
  * </ul>
  * Those operations are designed to be cheap (counter increments + a single timer record).
  */
@@ -43,6 +44,8 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
     private final Counter cancelTotal;
     private final Counter tradesTotal;
     private final Counter kafkaDroppedTotal;
+    private final Counter ringPublishRejectedSubmit;
+    private final Counter ringPublishRejectedCancel;
 
     public PrometheusEngineMetrics(int metricsPort) throws IOException {
         this.registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
@@ -75,6 +78,12 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
         this.cancelTotal = Counter.builder("matching.inbound.cancel.total").register(registry);
         this.tradesTotal = Counter.builder("matching.trades.filled.total").register(registry);
         this.kafkaDroppedTotal = Counter.builder("matching.kafka.trades.dropped.total").register(registry);
+        this.ringPublishRejectedSubmit = Counter.builder("matching.ring.publish.rejected.total")
+                .tag("op", "submit")
+                .register(registry);
+        this.ringPublishRejectedCancel = Counter.builder("matching.ring.publish.rejected.total")
+                .tag("op", "cancel")
+                .register(registry);
 
         this.server = HttpServer.create(new InetSocketAddress(metricsPort), 0);
         this.server.createContext("/metrics", this::handleMetrics);
@@ -123,6 +132,16 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
         if (droppedCount > 0) {
             kafkaDroppedTotal.increment(droppedCount);
         }
+    }
+
+    @Override
+    public void onRingPublishRejectedSubmit() {
+        ringPublishRejectedSubmit.increment();
+    }
+
+    @Override
+    public void onRingPublishRejectedCancel() {
+        ringPublishRejectedCancel.increment();
     }
 
     private void handleMetrics(HttpExchange exchange) throws IOException {

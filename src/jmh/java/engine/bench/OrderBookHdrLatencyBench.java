@@ -1,9 +1,9 @@
 package engine.bench;
 
-import engine.domain.Order;
-import engine.domain.OrderType;
-import engine.domain.Side;
-import engine.matching.OrderBook;
+import engine.core.domain.Order;
+import engine.core.domain.OrderType;
+import engine.core.domain.Side;
+import engine.core.matching.OrderBook;
 import org.HdrHistogram.Histogram;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;

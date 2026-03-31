@@ -47,7 +47,7 @@ jmh {
 }
 
 application {
-    mainClass.set("engine.MatchingEngineApp")
+    mainClass.set("engine.app.MatchingEngineApp")
 }
 
 tasks.test {

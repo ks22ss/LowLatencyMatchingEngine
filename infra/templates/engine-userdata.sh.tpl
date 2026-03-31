@@ -28,6 +28,7 @@ Type=simple
 WorkingDirectory=/opt/engine
 ExecStart=/opt/engine/build/install/LowLatencyMatchingEngine/bin/LowLatencyMatchingEngine 9999
 Environment=METRICS_PORT=8081
+Environment="JAVA_OPTS=-Xlog:gc*:file=/var/log/engine-gc.log:time,uptime,level,tags:filecount=5,filesize=10M"
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65536

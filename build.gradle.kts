@@ -57,3 +57,9 @@ tasks.test {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(21)
 }
+
+tasks.named<JavaExec>("run") {
+    jvmArgs(
+        "-Xlog:gc*:file=build/engine-gc.log:time,uptime,level,tags"
+    )
+}

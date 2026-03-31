@@ -6,6 +6,11 @@ import engine.core.domain.OrderType;
 import engine.core.domain.Side;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.binder.jvm.ClassLoaderMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
+import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 
@@ -33,6 +38,7 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
 
     private final PrometheusMeterRegistry registry;
     private final HttpServer server;
+    private final JvmGcMetrics jvmGcMetrics;
 
     private final Timer submitLatency;
 
@@ -49,6 +55,14 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
 
     public PrometheusEngineMetrics(int metricsPort) throws IOException {
         this.registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+
+        // JVM / host metrics (heap, GC pauses, threads, CPU) for diagnosing tail latency.
+        new ClassLoaderMetrics().bindTo(registry);
+        new JvmMemoryMetrics().bindTo(registry);
+        this.jvmGcMetrics = new JvmGcMetrics();
+        this.jvmGcMetrics.bindTo(registry);
+        new JvmThreadMetrics().bindTo(registry);
+        new ProcessorMetrics().bindTo(registry);
 
         this.submitLatency = Timer.builder("matching.submit.to.match.latency")
                 .description("Time from ring publish to matching thread processing")
@@ -163,6 +177,7 @@ public final class PrometheusEngineMetrics implements EngineMetrics, AutoCloseab
         if (server != null) {
             server.stop(0);
         }
+        jvmGcMetrics.close();
         registry.close();
     }
 }

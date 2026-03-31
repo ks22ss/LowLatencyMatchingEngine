@@ -153,10 +153,7 @@ public final class OrderBook {
                 side.remove(price);
             }
         } else {
-            Order updated = new Order(maker.orderId(), maker.side(), maker.price(), maker.quantity() - fillQty, maker.orderType(), maker.timestampNanos());
-            level.remove(maker.orderId());
-            level.put(updated.orderId(), updated);
-            restingById.put(updated.orderId(), updated);
+            maker.reduceQuantity(fillQty);
         }
 
         return new Fill(trade, fillQty);

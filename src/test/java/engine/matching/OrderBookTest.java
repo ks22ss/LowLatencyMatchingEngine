@@ -128,6 +128,26 @@ class OrderBookTest {
             assertEquals(2L, r.trades().get(1).makerOrderId());
             assertEquals(1L, r.trades().get(1).quantity());
         }
+
+        @Test
+        void fifoPreservedAfterPartialFillOfFirstMakerSamePrice() {
+            book.submit(Order.of(1L, Side.SELL, 100_00L, 10L, OrderType.LIMIT));
+            book.submit(Order.of(2L, Side.BUY, 100_00L, 4L, OrderType.LIMIT));
+            book.submit(Order.of(3L, Side.SELL, 100_00L, 5L, OrderType.LIMIT));
+            MatchResult r = book.submit(Order.of(4L, Side.BUY, 100_00L, 10L, OrderType.LIMIT));
+            assertEquals(2, r.trades().size());
+            assertEquals(1L, r.trades().get(0).makerOrderId());
+            assertEquals(6L, r.trades().get(0).quantity());
+            assertEquals(3L, r.trades().get(1).makerOrderId());
+            assertEquals(4L, r.trades().get(1).quantity());
+            assertTrue(r.restingOrder().isEmpty());
+            MatchResult r2 = book.submit(Order.of(5L, Side.BUY, 100_00L, 5L, OrderType.LIMIT));
+            assertEquals(1, r2.trades().size());
+            assertEquals(3L, r2.trades().get(0).makerOrderId());
+            assertEquals(1L, r2.trades().get(0).quantity());
+            assertTrue(r2.restingOrder().isPresent());
+            assertEquals(4L, r2.restingOrder().get().quantity());
+        }
     }
 
     @Nested

@@ -20,5 +20,3 @@ hs_err_pid*
 # Local config (do not commit secrets)
 local.properties
 *.local
-
-docs/

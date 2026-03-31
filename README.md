@@ -157,6 +157,10 @@ Infrastructure lives in `infra/` (Terraform). User-data bootstraps each instance
 
 ### Running the experiment
 
+Prepare the infrastructure:
+- your key pair on ec2 region
+- your public ip
+
 ```bash
 cd infra
 cp terraform.tfvars.example terraform.tfvars

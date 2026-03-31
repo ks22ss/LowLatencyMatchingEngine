@@ -37,6 +37,7 @@ echo "=== Starting loadgen ==="
   -duration "${duration}" \
   -conns ${conns} \
   -rate ${rate} \
+  -batch ${batch} \
   -cancel-pct ${cancel_pct} \
   -price 10000 \
   -price-jitter 500 \

@@ -82,6 +82,8 @@ go run . -addr 127.0.0.1:9999 -duration 60s -conns 4 -rate 20000
 
 To run at maximum speed (no target rate), set `-rate 0`.
 
+Use **`-batch`** (default `128`) to send multiple frames per `Write` (e.g. `64`–`256`). Progress lines **`[progress] interval_msg/s=…`** print every **5 seconds**.
+
 ## AWS experiment (Terraform)
 
 For the cloud experiment (engine + spot loadgens + self-hosted Prometheus/Grafana), see:

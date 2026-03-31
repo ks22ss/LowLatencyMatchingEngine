@@ -24,6 +24,7 @@ resource "aws_spot_instance_request" "loadgen" {
     conns       = var.loadgen_conns
     rate        = var.loadgen_rate
     cancel_pct  = var.loadgen_cancel_pct
+    batch       = var.loadgen_batch
   })
 
   tags = { Name = "loadgen-${count.index}" }

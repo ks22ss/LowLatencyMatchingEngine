@@ -66,3 +66,8 @@ variable "loadgen_cancel_pct" {
   description = "Percent of messages that are CANCEL (0..100)"
   default     = 10
 }
+
+variable "loadgen_batch" {
+  description = "Frames per TCP write (batching reduces syscalls; typical 64–256)"
+  default     = 128
+}

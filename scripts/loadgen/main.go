@@ -25,6 +25,8 @@ const (
 
 	orderTypeLimit  = byte(0)
 	orderTypeMarket = byte(1)
+
+	maxFrameBytes = 35 // SUBMIT
 )
 
 type cfg struct {
@@ -40,6 +42,7 @@ type cfg struct {
 	qtyMax      int64
 	seed        int64
 	timeout     time.Duration
+	batchFrames int
 }
 
 func main() {
@@ -56,10 +59,14 @@ func main() {
 	flag.Int64Var(&c.qtyMax, "qty-max", 1, "max quantity")
 	flag.Int64Var(&c.seed, "seed", 1, "RNG seed (use a fixed seed for repeatability)")
 	flag.DurationVar(&c.timeout, "timeout", 3*time.Second, "dial timeout per connection")
+	flag.IntVar(&c.batchFrames, "batch", 128, "max frames to buffer per Write (64–256 typical)")
 	flag.Parse()
 
 	if c.conns < 1 {
 		fatalf("conns must be >= 1")
+	}
+	if c.batchFrames < 1 {
+		fatalf("batch must be >= 1")
 	}
 	if c.cancelPct < 0 || c.cancelPct > 100 {
 		fatalf("cancel-pct must be 0..100")
@@ -84,26 +91,44 @@ func main() {
 	)
 
 	start := time.Now()
+
+	go progressReporter(ctx, start, &submits, &cancels, &errors)
+
 	var wg sync.WaitGroup
 	wg.Add(c.conns)
 
-	// Rate is global; each worker gets an even share.
 	perConnRate := c.rate
 	if c.rate > 0 {
 		perConnRate = c.rate / float64(c.conns)
 	}
 
-	// Each worker maintains a small ring of recently submitted order IDs so cancels are usually "valid".
 	const cancelRingSize = 2048
 
 	for i := 0; i < c.conns; i++ {
 		workerID := i
-		// Mix the worker id into the base seed without overflowing int64.
-		// (We only need stable per-worker divergence, not cryptographic quality.)
 		seed := c.seed ^ int64(uint64(workerID)*11400714819323198485)
-		wg.Add(0)
 		go func() {
 			defer wg.Done()
+
+			var scratch [maxFrameBytes]byte
+			batchCap := c.batchFrames * maxFrameBytes
+			batch := make([]byte, 0, batchCap)
+			queuedFrames := 0
+
+			var conn net.Conn
+
+			flush := func() error {
+				if len(batch) == 0 {
+					return nil
+				}
+				if conn == nil {
+					return nil
+				}
+				err := writeAll(conn, batch)
+				batch = batch[:0]
+				queuedFrames = 0
+				return err
+			}
 
 			rng := rand.New(rand.NewSource(seed))
 
@@ -114,15 +139,12 @@ func main() {
 			)
 
 			dialer := net.Dialer{Timeout: c.timeout}
-
-			var conn net.Conn
 			defer func() {
+				_ = flush()
 				if conn != nil {
 					_ = conn.Close()
 				}
 			}()
-
-			var buf [35]byte
 
 			limiter := (*time.Ticker)(nil)
 			if perConnRate > 0 {
@@ -134,10 +156,11 @@ func main() {
 				defer limiter.Stop()
 			}
 
+		workLoop:
 			for {
 				select {
 				case <-ctx.Done():
-					return
+					break workLoop
 				default:
 				}
 
@@ -145,7 +168,7 @@ func main() {
 					select {
 					case <-limiter.C:
 					case <-ctx.Done():
-						return
+						break workLoop
 					}
 				}
 
@@ -159,69 +182,68 @@ func main() {
 					conn = cn
 				}
 
-				// Decide message type.
 				if rng.Float64()*100.0 < c.cancelPct && cancelFill > 0 {
-					// CANCEL a recently submitted order id (or a random one if ring not full).
 					var oid uint64
 					if cancelFill == cancelRingSize {
 						oid = cancelRing[rng.Intn(cancelRingSize)]
 					} else {
 						oid = cancelRing[rng.Intn(int(cancelFill))]
 					}
-					frame := packCancel(buf[:9], int64(oid))
-					if err := writeAll(conn, frame); err != nil {
+					frame := packCancel(scratch[:9], int64(oid))
+					batch = append(batch, frame...)
+					queuedFrames++
+					atomic.AddUint64(&cancels, 1)
+
+				} else {
+					oid := atomic.AddUint64(&nextOrderID, 1)
+					side := sideBuy
+					if rng.Intn(2) == 0 {
+						side = sideSell
+					}
+
+					price := c.price
+					if c.priceJitter > 0 {
+						j := rng.Int63n(2*c.priceJitter+1) - c.priceJitter
+						price += j
+						if price < 1 {
+							price = 1
+						}
+					}
+					qty := c.qtyMin
+					if c.qtyMax > c.qtyMin {
+						qty = c.qtyMin + rng.Int63n(c.qtyMax-c.qtyMin+1)
+					}
+
+					ot := orderTypeLimit
+					if rng.Float64()*100.0 < c.marketPct {
+						ot = orderTypeMarket
+						price = 0
+					}
+
+					ts := time.Now().UnixNano()
+					frame := packSubmit(scratch[:], int64(oid), side, price, qty, ot, ts)
+					batch = append(batch, frame...)
+					queuedFrames++
+					atomic.AddUint64(&submits, 1)
+
+					cancelRing[cancelIdx%cancelRingSize] = oid
+					cancelIdx++
+					if cancelFill < cancelRingSize {
+						cancelFill++
+					}
+				}
+
+				if queuedFrames >= c.batchFrames {
+					if err := flush(); err != nil {
 						atomic.AddUint64(&errors, 1)
 						_ = conn.Close()
 						conn = nil
-						continue
-					}
-					atomic.AddUint64(&cancels, 1)
-					continue
-				}
-
-				// SUBMIT
-				oid := atomic.AddUint64(&nextOrderID, 1)
-				side := sideBuy
-				if rng.Intn(2) == 0 {
-					side = sideSell
-				}
-
-				price := c.price
-				if c.priceJitter > 0 {
-					j := rng.Int63n(2*c.priceJitter+1) - c.priceJitter
-					price += j
-					if price < 1 {
-						price = 1
 					}
 				}
-				qty := c.qtyMin
-				if c.qtyMax > c.qtyMin {
-					qty = c.qtyMin + rng.Int63n(c.qtyMax-c.qtyMin+1)
-				}
+			}
 
-				ot := orderTypeLimit
-				if rng.Float64()*100.0 < c.marketPct {
-					ot = orderTypeMarket
-					// For MARKET, engine ignores price semantics; keep 0 to match tests.
-					price = 0
-				}
-
-				ts := time.Now().UnixNano()
-				frame := packSubmit(buf[:], int64(oid), side, price, qty, ot, ts)
-				if err := writeAll(conn, frame); err != nil {
-					atomic.AddUint64(&errors, 1)
-					_ = conn.Close()
-					conn = nil
-					continue
-				}
-				atomic.AddUint64(&submits, 1)
-
-				// Push to cancel ring.
-				cancelRing[cancelIdx%cancelRingSize] = oid
-				cancelIdx++
-				if cancelFill < cancelRingSize {
-					cancelFill++
-				}
+			if err := flush(); err != nil {
+				atomic.AddUint64(&errors, 1)
 			}
 		}()
 	}
@@ -238,6 +260,7 @@ func main() {
 	fmt.Printf("Done.\n")
 	fmt.Printf("  duration: %s\n", elapsed.Truncate(time.Millisecond))
 	fmt.Printf("  conns:    %d\n", c.conns)
+	fmt.Printf("  batch:    %d frames/write\n", c.batchFrames)
 	fmt.Printf("  submits:  %d\n", s)
 	fmt.Printf("  cancels:  %d\n", k)
 	fmt.Printf("  errors:   %d\n", e)
@@ -247,8 +270,33 @@ func main() {
 	fmt.Printf("  ended:    %s\n", time.Now().Format(time.RFC3339))
 }
 
+func progressReporter(ctx context.Context, start time.Time, submits, cancels, errors *uint64) {
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+
+	var prevTotal uint64
+	prevAt := start
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case t := <-tick.C:
+			total := atomic.LoadUint64(submits) + atomic.LoadUint64(cancels)
+			dt := t.Sub(prevAt).Seconds()
+			if dt > 0 {
+				fmt.Printf("[progress] interval_msg/s=%.0f  total_msgs=%d  errors=%d\n",
+					float64(total-prevTotal)/dt,
+					total,
+					atomic.LoadUint64(errors))
+			}
+			prevTotal = total
+			prevAt = t
+		}
+	}
+}
+
 func packSubmit(dst []byte, orderID int64, side byte, price int64, qty int64, orderType byte, tsNanos int64) []byte {
-	// SUBMIT (35 bytes): type(1)=0, orderId(8), side(1), price(8), qty(8), orderType(1), timestampNanos(8)
 	dst[0] = msgSubmit
 	binary.BigEndian.PutUint64(dst[1:9], uint64(orderID))
 	dst[9] = side
@@ -260,7 +308,6 @@ func packSubmit(dst []byte, orderID int64, side byte, price int64, qty int64, or
 }
 
 func packCancel(dst []byte, orderID int64) []byte {
-	// CANCEL (9 bytes): type(1)=1, orderId(8)
 	dst[0] = msgCancel
 	binary.BigEndian.PutUint64(dst[1:9], uint64(orderID))
 	return dst[:9]
@@ -303,4 +350,3 @@ func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(2)
 }
-

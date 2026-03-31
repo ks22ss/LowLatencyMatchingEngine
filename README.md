@@ -213,8 +213,7 @@ But the number of trades match seems go linear with it, so not sure the orderboo
   - Enable **GC logs** on the engine instance (Java 21 `-Xlog:gc*`), ship `/var/log/engine-gc.log` for inspection.
 
 - **Increase achieved loadgen throughput**
-  - Update `scripts/loadgen` to **batch frames** (e.g. 64–256 frames per write) and print periodic progress (msg/s every 5s).
-  - Compare “configured rate” vs “achieved rate” and correlate with engine p99.
+  - Tune **`-batch`** (Terraform `loadgen_batch`, default 128) and connection count; compare “configured rate” vs **progress `interval_msg/s`** and correlate with engine p99.
 
 - **Make the workload more realistic**
   - Add loadgen modes: **crossing pairs**, **rest-heavy**, **cancel-heavy**, **market-heavy**.

@@ -19,11 +19,14 @@ go run . -addr 127.0.0.1:9999 -duration 60s -conns 4 -rate 20000
 - `-duration`: how long to run
 - `-conns`: number of concurrent TCP connections
 - `-rate`: target total messages/sec across all connections (`0` = as fast as possible)
+- `-batch`: max frames per `Write` syscall (default `128`; try `64`–`256` for throughput)
 - `-cancel-pct`: percent of messages that are CANCEL (0..100)
 - `-market-pct`: percent of SUBMITs that are MARKET (0..100)
 - `-price`, `-price-jitter`: base price and uniform jitter
 - `-qty-min`, `-qty-max`: quantity range
 - `-seed`: RNG seed for repeatability
+
+While running, it prints **`[progress] interval_msg/s=…`** every **5s** (rolling window since the last line).
 
 ### Examples
 

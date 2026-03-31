@@ -91,6 +91,7 @@ Edit `terraform.tfvars`:
 | `loadgen_rate` | 10000 | Target msg/s per loadgen instance |
 | `loadgen_conns` | 4 | TCP connections per loadgen |
 | `loadgen_cancel_pct` | 10 | Percent of messages that are CANCEL |
+| `loadgen_batch` | 128 | Frames per TCP write (batching for throughput) |
 
 Total theoretical throughput = `loadgen_count * loadgen_rate` msg/s (e.g. 10 * 10000 = 100k msg/s).
 
